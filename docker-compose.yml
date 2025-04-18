@@ -1,0 +1,40 @@
+services:  
+  jwtapp:  
+    build:
+      context: .
+      dockerfile: builds/Dockerfile
+    ports:
+      - "${APP_PORT}:${APP_PORT}" 
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - network
+
+  db:                         
+    image: postgres:14
+    ports:
+      - "${DB_PORT}:${DB_PORT}" 
+    environment:  
+      POSTGRES_USER: ${DB_USER}  
+      POSTGRES_PASSWORD: ${DB_PASSWORD}  
+      POSTGRES_DB: ${DB_NAME} 
+    volumes:
+      - db_data:/var/lib/postgresql/data 
+      - ./migrations/20250416144345_refresh_tokens.up.sql:/docker-entrypoint-initdb.d/20250416144345_refresh_tokens.up.sql
+    restart: always
+    networks:
+      - network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5 
+      start_period: 10s
+
+networks:
+  network:  
+    driver: bridge
+volumes:
+  db_data:
