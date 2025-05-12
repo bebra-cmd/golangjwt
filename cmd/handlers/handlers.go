@@ -13,18 +13,21 @@ import (
 
 const COOKIE_LIFETIME = 2592000
 
-func GetPair(c *gin.Context) {
-	if c.Query("guid") == "" {
-		log.Println(c.ClientIP() + " try to access with no GUID")
-		return
+func GetPair(buffer <-chan crypto.TokenHash) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Query("guid") == "" {
+			log.Println(c.ClientIP() + " try to access with no GUID")
+			return
+		}
+		currentTimeStamp := time.Now().UTC()
+		refreshPair := <-buffer
+		access, jti := crypto.GenerateJWT(c.Query("guid"), c.ClientIP(), currentTimeStamp)
+		sql.InsertRefreshToken(refreshPair.Hash, jti, currentTimeStamp)
+		insertCookie(access, refreshPair.Token, c)
 	}
-	currentTimeStamp := time.Now().UTC()
-	access, refresh := crypto.GeneratePair(c.Query("guid"), c.ClientIP(), currentTimeStamp)
-	sql.InsertRefreshToken(crypto.BcryptHashGenerate(refresh), crypto.GetClaimsFromToken(access).Jti, currentTimeStamp)
-	insertCookie(access, refresh, c)
 }
-func RefreshPair(c *gin.Context) { //average time around 400ms ?!
-	//guess delete+insert operations make with sqlctx for rollbacking
+
+func RefreshPair(c *gin.Context) {
 	refresh, err := c.Cookie("refresh_token")
 	if err != nil {
 		log.Println(err)
@@ -51,8 +54,8 @@ func RefreshPair(c *gin.Context) { //average time around 400ms ?!
 			if accessClaims.Ip != c.ClientIP() {
 				smtpadd.SendToEmail(accessClaims.Mail, c.ClientIP()) //send email if curr ip!=claims.Ip
 			}
-			sql.DeleteRefreshToken(hash)                                                             //maybe better make INSERT INTO Have only 1 index on JTI
-			access, refresh = crypto.GeneratePair(accessClaims.Guid, c.ClientIP(), currentTimeStamp) //generate new insert into db
+			sql.DeleteRefreshToken(hash)                                                            //maybe better make INSERT INTO Have only 1 index on JTI
+			access, refresh = crypto.GenerateJWT(accessClaims.Guid, c.ClientIP(), currentTimeStamp) //generate new insert into db
 			sql.InsertRefreshToken(crypto.BcryptHashGenerate(refresh), crypto.GetClaimsFromToken(access).Jti, currentTimeStamp)
 		} else {
 			log.Println(err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"authgolang/cmd/handlers"
+	"authgolang/internal/crypto"
 	"authgolang/internal/sql"
 	"log"
 	"os"
@@ -11,7 +12,10 @@ import (
 
 func main() {
 	server := gin.Default()
-	server.POST("/auth", handlers.GetPair)
+	//rewrite it to worker pool
+	buffered_refresh := make(chan crypto.TokenHash, 1000)
+	go crypto.GenerateRefreshToken(buffered_refresh)
+	server.POST("/auth", handlers.GetPair(buffered_refresh))
 	server.POST("/refresh", handlers.RefreshPair)
 	sql.Init()
 	var logPath string
@@ -29,4 +33,5 @@ func main() {
 	log.SetOutput(logFile)
 	server.Run(":" + os.Getenv("APP_PORT"))
 	defer sql.Global_db.Close()
+	//add defer to close worker pool
 }

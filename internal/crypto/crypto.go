@@ -71,16 +71,30 @@ func BcryptHashGenerate(token string) []byte {
 	}
 	return hash
 }
-func GeneratePair(guid string, ip string, currentTimeStamp time.Time) (string, string) {
-	var SECRET = os.Getenv("SECRET_KEY")
+func GenerateJWT(guid string, ip string, currentTimeStamp time.Time) (string, string) {
 	jti := uuid.NewString()
+	var SECRET = os.Getenv("SECRET_KEY")
 	payload := jwt.MapClaims{"guid": guid, "jti": jti, "ip": ip, "mail": MAIL, "expire_date": currentTimeStamp.Add(ACCESS_LIFETIME * time.Second).Format(time.RFC3339)}
 	token := jwt.NewWithClaims(SignatureMethod, payload)
 	accessToken, err := token.SignedString([]byte(SECRET))
 	if err != nil {
 		log.Println(err)
 	}
-	refreshToken := uuid.NewString()
-	refreshToken = base64.RawStdEncoding.Strict().EncodeToString([]byte(refreshToken))
-	return accessToken, refreshToken
+	return accessToken, jti
+}
+
+type TokenHash struct {
+	Token string
+	Hash  []byte
+}
+
+func GenerateRefreshToken(init <-chan struct{}, buffer chan<- TokenHash) {
+	//rewrite to make it stable coroutine for worker pool
+	for sema := range init {
+
+		refreshToken := uuid.NewString()
+		hash := BcryptHashGenerate(refreshToken)
+		refreshToken = base64.RawStdEncoding.Strict().EncodeToString([]byte(refreshToken))
+		buffer <- TokenHash{refreshToken, hash}
+	}
 }
