@@ -10,13 +10,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// buffer of generated tokens+bcrypt(tokens)
+const BufferedSize = 1000
+
+// queue length
+const WorkerPoolSize = 10
+
 func main() {
 	server := gin.Default()
-	//rewrite it to worker pool
-	buffered_refresh := make(chan crypto.TokenHash, 1000)
-	go crypto.GenerateRefreshToken(buffered_refresh)
+	buffered_refresh := make(chan crypto.TokenHash, BufferedSize)
+	killChan := make(chan struct{})
+	for i := 0; i < WorkerPoolSize; i++ {
+		go crypto.GenerateRefreshToken(buffered_refresh, killChan)
+	}
 	server.POST("/auth", handlers.GetPair(buffered_refresh))
-	server.POST("/refresh", handlers.RefreshPair)
+	server.POST("/refresh", handlers.RefreshPair(buffered_refresh))
 	sql.Init()
 	var logPath string
 	if gin.IsDebugging() {
@@ -33,5 +41,6 @@ func main() {
 	log.SetOutput(logFile)
 	server.Run(":" + os.Getenv("APP_PORT"))
 	defer sql.Global_db.Close()
-	//add defer to close worker pool
+	defer close(killChan)
+	defer close(buffered_refresh)
 }

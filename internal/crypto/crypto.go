@@ -13,12 +13,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// guess done here nothing to add
 var SignatureMethod = jwt.SigningMethodHS512
 
 const MAIL = "mockmock@mock.mock"
 const ACCESS_LIFETIME = 1800
 
+// don't used structure :/ purge or find where use it
 type Claims struct {
 	Guid        string
 	Jti         string
@@ -88,13 +88,16 @@ type TokenHash struct {
 	Hash  []byte
 }
 
-func GenerateRefreshToken(init <-chan struct{}, buffer chan<- TokenHash) {
-	//rewrite to make it stable coroutine for worker pool
-	for sema := range init {
-
-		refreshToken := uuid.NewString()
-		hash := BcryptHashGenerate(refreshToken)
-		refreshToken = base64.RawStdEncoding.Strict().EncodeToString([]byte(refreshToken))
-		buffer <- TokenHash{refreshToken, hash}
+func GenerateRefreshToken(buffer chan<- TokenHash, killer <-chan struct{}) {
+	for {
+		select {
+		case <-killer:
+			return
+		default:
+			refreshToken := uuid.NewString()
+			hash := BcryptHashGenerate(refreshToken)
+			refreshToken = base64.RawStdEncoding.Strict().EncodeToString([]byte(refreshToken))
+			buffer <- TokenHash{refreshToken, hash}
+		}
 	}
 }
